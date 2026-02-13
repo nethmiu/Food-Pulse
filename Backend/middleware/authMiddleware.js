@@ -26,4 +26,20 @@ const adminOnly = (req, res, next) => {
     }
 };
 
-module.exports = { protect, adminOnly };
+const restaurantOnly = (req, res, next) => {
+    if (req.user && req.user.role === 'restaurant') {
+        next();
+    } else {
+        res.status(401).json({ message: 'Not authorized as a restaurant' });
+    }
+};
+
+const riderOnly = (req, res, next) => {
+    if (req.user && req.user.role === 'rider') {
+        next();
+    } else {
+        res.status(401).json({ message: 'Not authorized as a rider' });
+    }
+};
+
+module.exports = { protect, adminOnly, restaurantOnly, riderOnly };

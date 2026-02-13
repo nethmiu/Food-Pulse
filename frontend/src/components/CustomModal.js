@@ -1,7 +1,7 @@
 import React from 'react';
 import { X, CheckCircle, AlertTriangle } from 'lucide-react';
 
-const CustomModal = ({ isOpen, onClose, title, message, type = 'success', onConfirm, children }) => {
+const CustomModal = ({ isOpen, onClose, title, message, type = 'success', onConfirm, showButton = true, children }) => {
     if (!isOpen) return null;
 
     const styles = {
@@ -110,31 +110,33 @@ const CustomModal = ({ isOpen, onClose, title, message, type = 'success', onConf
                 <p style={styles.message}>{message}</p>
                 {children}
 
-                <div style={styles.buttonGroup}>
-                    {type === 'confirm' ? (
-                        <>
-                            <button
-                                style={{ ...styles.button, ...styles.cancelButton }}
-                                onClick={onClose}
-                            >
-                                Cancel
-                            </button>
+                {showButton && (
+                    <div style={styles.buttonGroup}>
+                        {type === 'confirm' ? (
+                            <>
+                                <button
+                                    style={{ ...styles.button, ...styles.cancelButton }}
+                                    onClick={onClose}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    style={{ ...styles.button, ...styles.confirmButton }}
+                                    onClick={onConfirm}
+                                >
+                                    Confirm
+                                </button>
+                            </>
+                        ) : (
                             <button
                                 style={{ ...styles.button, ...styles.confirmButton }}
-                                onClick={onConfirm}
+                                onClick={onConfirm || onClose}
                             >
-                                Confirm
+                                OK
                             </button>
-                        </>
-                    ) : (
-                        <button
-                            style={{ ...styles.button, ...styles.confirmButton }}
-                            onClick={onConfirm || onClose}
-                        >
-                            OK
-                        </button>
-                    )}
-                </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

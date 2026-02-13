@@ -324,6 +324,32 @@ export default function MenuList() {
             borderTop: '3px solid #FFD700',
             borderRadius: '50%',
             animation: 'spin 1s linear infinite'
+        },
+        addItemCard: {
+            background: 'rgba(255, 255, 255, 0.03)',
+            border: '2px dashed rgba(255, 215, 0, 0.3)',
+            borderRadius: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            minHeight: '300px'
+        },
+        addItemCardHover: {
+            borderColor: '#FFD700',
+            background: 'rgba(255, 215, 0, 0.05)',
+            transform: 'translateY(-8px)'
+        },
+        addItemContent: {
+            textAlign: 'center',
+            color: '#FFD700'
+        },
+        addItemText: {
+            marginTop: '15px',
+            fontSize: '1.1rem',
+            fontWeight: '600'
         }
     };
 
@@ -487,6 +513,33 @@ export default function MenuList() {
                                 </div>
                             </div>
                         ))}
+
+                        {/* Add Item Card */}
+                        <div
+                            style={{
+                                ...styles.addItemCard,
+                                ...(hoveredCard === 'add-new' ? styles.addItemCardHover : {})
+                            }}
+                            onMouseEnter={() => setHoveredCard('add-new')}
+                            onMouseLeave={() => setHoveredCard(null)}
+                            onClick={() => navigate('/restaurant/menu/add')}
+                        >
+                            <div style={styles.addItemContent}>
+                                <div style={{
+                                    width: '60px',
+                                    height: '60px',
+                                    borderRadius: '50%',
+                                    background: 'rgba(255, 215, 0, 0.2)',
+                                    display: 'flex',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    margin: '0 auto'
+                                }}>
+                                    <Plus size={32} />
+                                </div>
+                                <p style={styles.addItemText}>Add New Item</p>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>

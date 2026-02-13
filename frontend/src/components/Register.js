@@ -1,10 +1,32 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff, CheckCircle, AlertCircle,  ShoppingBag, Store, Bike } from 'lucide-react';
+import { Eye, EyeOff, CheckCircle, AlertCircle, ShoppingBag, Store, Bike, MapPin, Locate, Phone } from 'lucide-react';
+import CustomModal from './CustomModal';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+
+// Fix for Leaflet marker icon
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
+    iconUrl: require('leaflet/dist/images/marker-icon.png'),
+    shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
+});
+
+function LocationMarker({ location, setLocation }) {
+    useMapEvents({
+        click(e) {
+            setLocation(e.latlng);
+        },
+    });
+    return location === null ? null : <Marker position={location}></Marker>;
+}
 
 const Register = () => {
-    const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '', role: 'customer' });
+    const [formData, setFormData] = useState({ name: '', username: '', email: '', phone: '', password: '', confirmPassword: '', role: 'customer', address: '' });
+    const [location, setLocation] = useState({ lat: 6.9271, lng: 79.8612 }); // Default Colombo
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [passwordValidation, setPasswordValidation] = useState({
@@ -15,6 +37,16 @@ const Register = () => {
     });
     const [passwordsMatch, setPasswordsMatch] = useState(true);
     const [loading, setLoading] = useState(false);
+
+    // Modal State
+    const [modalConfig, setModalConfig] = useState({
+        isOpen: false,
+        type: 'success',
+        title: '',
+        message: '',
+        onConfirm: null
+    });
+
     const navigate = useNavigate();
 
     const validatePassword = (password) => {
@@ -43,15 +75,59 @@ const Register = () => {
     };
 
     const isPasswordValid = () => {
-        return passwordValidation.length && passwordValidation.uppercase && 
-               passwordValidation.number && passwordValidation.special && passwordsMatch;
+        return passwordValidation.length && passwordValidation.uppercase &&
+            passwordValidation.number && passwordValidation.special && passwordsMatch;
     };
 
     const handleRegister = async (e) => {
         e.preventDefault();
-        
+
+        // Username Validation
+        if (formData.username.length < 4) {
+            setModalConfig({
+                isOpen: true,
+                type: 'error',
+                title: 'Validation Error',
+                message: 'Username must be at least 4 characters long.',
+                onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+            });
+            return;
+        }
+
+        // Email Validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(formData.email)) {
+            setModalConfig({
+                isOpen: true,
+                type: 'error',
+                title: 'Validation Error',
+                message: 'Please enter a valid email address.',
+                onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+            });
+            return;
+        }
+
+        // Phone Validation
+        const phoneRegex = /^\d{10}$/;
+        if (!phoneRegex.test(formData.phone)) {
+            setModalConfig({
+                isOpen: true,
+                type: 'error',
+                title: 'Validation Error',
+                message: 'Phone number must be exactly 10 digits.',
+                onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+            });
+            return;
+        }
+
         if (!isPasswordValid()) {
-            alert('Please ensure password meets all requirements and passwords match');
+            setModalConfig({
+                isOpen: true,
+                type: 'error',
+                title: 'Validation Error',
+                message: 'Please ensure password meets all requirements and passwords match',
+                onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+            });
             return;
         }
 
@@ -59,16 +135,56 @@ const Register = () => {
         try {
             await axios.post('http://localhost:5000/api/users/register', {
                 name: formData.name,
+                username: formData.username,
                 email: formData.email,
+                phone: formData.phone,
                 password: formData.password,
-                role: formData.role
+                role: formData.role,
+                address: formData.role === 'restaurant' ? formData.address : undefined,
+                location: formData.role === 'restaurant' ? location : undefined
             });
-            alert('Registration Successful! Please Login.');
-            navigate('/login');
+            setModalConfig({
+                isOpen: true,
+                type: 'success',
+                title: 'Welcome to Food Pulse!',
+                message: 'Registration Successful! You can now log in to your account.',
+                onConfirm: () => {
+                    setModalConfig(prev => ({ ...prev, isOpen: false }));
+                    navigate('/login');
+                }
+            });
         } catch (err) {
-            alert(err.response?.data?.message || 'Error registering user');
+            setModalConfig({
+                isOpen: true,
+                type: 'error',
+                title: 'Registration Failed',
+                message: err.response?.data?.message || 'Error registering user',
+                onConfirm: () => setModalConfig(prev => ({ ...prev, isOpen: false }))
+            });
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleFindMe = () => {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const { latitude, longitude } = position.coords;
+                    setLocation({ lat: latitude, lng: longitude });
+                },
+                (error) => {
+                    // Location access denied or errored. Fail silently and let user manually pick location.
+                    console.warn("Geolocation denied or failed", error);
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                }
+            );
+        } else {
+            alert("Geolocation is not supported by this browser.");
         }
     };
 
@@ -122,7 +238,7 @@ const Register = () => {
         },
         container: {
             width: '100%',
-            maxWidth: '550px',
+            maxWidth: '800px',
             position: 'relative',
             zIndex: 10
         },
@@ -329,8 +445,8 @@ const Register = () => {
     return (
         <div style={styles.pageWrapper}>
             {/* Background Decorators */}
-            <div style={{...styles.bgDecorator, ...styles.bgDecorTop}}></div>
-            <div style={{...styles.bgDecorator, ...styles.bgDecorBottom}}></div>
+            <div style={{ ...styles.bgDecorator, ...styles.bgDecorTop }}></div>
+            <div style={{ ...styles.bgDecorator, ...styles.bgDecorBottom }}></div>
 
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
@@ -385,7 +501,7 @@ const Register = () => {
                                             }}
                                             onClick={() => setFormData({ ...formData, role: option.id })}
                                         >
-                                            <IconComponent 
+                                            <IconComponent
                                                 style={{
                                                     ...styles.roleCardIcon,
                                                     color: isSelected ? '#FFD700' : '#888'
@@ -426,6 +542,26 @@ const Register = () => {
                             />
                         </div>
 
+                        {/* Username */}
+                        <div style={styles.formGroup}>
+                            <label style={styles.label}>Username</label>
+                            <input
+                                name="username"
+                                type="text"
+                                placeholder="Username"
+                                value={formData.username}
+                                onChange={handleChange}
+                                required
+                                style={styles.inputField}
+                                onFocus={(e) => Object.assign(e.target.style, styles.inputFieldFocus)}
+                                onBlur={(e) => {
+                                    e.target.style.borderColor = 'rgba(255, 215, 0, 0.2)';
+                                    e.target.style.boxShadow = 'none';
+                                    e.target.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
+                                }}
+                            />
+                        </div>
+
                         {/* Email */}
                         <div style={styles.formGroup}>
                             <label style={styles.label}>Email Address</label>
@@ -446,6 +582,31 @@ const Register = () => {
                             />
                         </div>
 
+                        {/* Phone Number */}
+                        <div style={styles.formGroup}>
+                            <label style={styles.label}>Phone Number</label>
+                            <div style={styles.inputIcon}>
+                                <input
+                                    name="phone"
+                                    type="tel"
+                                    placeholder="Enter Phone Number"
+                                    value={formData.phone}
+                                    onChange={handleChange}
+                                    required
+                                    style={styles.inputField}
+                                    onFocus={(e) => Object.assign(e.target.style, styles.inputFieldFocus)}
+                                    onBlur={(e) => {
+                                        e.target.style.borderColor = 'rgba(255, 215, 0, 0.2)';
+                                        e.target.style.boxShadow = 'none';
+                                        e.target.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
+                                    }}
+                                />
+                                <div style={styles.iconWrapper}>
+                                    <Phone size={18} style={{ color: '#666' }} />
+                                </div>
+                            </div>
+                        </div>
+
                         {/* Password */}
                         <div style={styles.formGroup}>
                             <label style={styles.label}>Create Password</label>
@@ -457,7 +618,7 @@ const Register = () => {
                                     value={formData.password}
                                     onChange={handleChange}
                                     required
-                                    style={{...styles.inputField, ...styles.passwordInput}}
+                                    style={{ ...styles.inputField, ...styles.passwordInput }}
                                     onFocus={(e) => Object.assign(e.target.style, styles.inputFieldFocus)}
                                     onBlur={(e) => {
                                         e.target.style.borderColor = 'rgba(255, 215, 0, 0.2)';
@@ -465,7 +626,7 @@ const Register = () => {
                                         e.target.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
                                     }}
                                 />
-                                <div 
+                                <div
                                     style={styles.iconWrapper}
                                     onClick={() => setShowPassword(!showPassword)}
                                     onMouseEnter={(e) => e.target.style.color = '#FFD700'}
@@ -498,7 +659,7 @@ const Register = () => {
                                     value={formData.confirmPassword}
                                     onChange={handleChange}
                                     required
-                                    style={{...styles.inputField, ...styles.passwordInput}}
+                                    style={{ ...styles.inputField, ...styles.passwordInput }}
                                     onFocus={(e) => Object.assign(e.target.style, styles.inputFieldFocus)}
                                     onBlur={(e) => {
                                         e.target.style.borderColor = 'rgba(255, 215, 0, 0.2)';
@@ -506,7 +667,7 @@ const Register = () => {
                                         e.target.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
                                     }}
                                 />
-                                <div 
+                                <div
                                     style={styles.iconWrapper}
                                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                                     onMouseEnter={(e) => e.target.style.color = '#FFD700'}
@@ -518,7 +679,7 @@ const Register = () => {
 
                             {/* Password Match Indicator */}
                             {formData.confirmPassword && (
-                                <div style={{...styles.matchIndicator, color: passwordsMatch ? '#FFD700' : '#FF6B6B'}}>
+                                <div style={{ ...styles.matchIndicator, color: passwordsMatch ? '#FFD700' : '#FF6B6B' }}>
                                     {passwordsMatch ? (
                                         <CheckCircle size={14} style={{ color: '#FFD700' }} />
                                     ) : (
@@ -528,6 +689,95 @@ const Register = () => {
                                 </div>
                             )}
                         </div>
+
+                        {/* Restaurant Specific Fields */}
+                        {formData.role === 'restaurant' && (
+                            <div style={{ marginTop: '20px', marginBottom: '30px', padding: '20px', backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: '15px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                                <h3 style={{ color: '#FFD700', fontSize: '1.1rem', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
+                                    <MapPin size={20} />
+                                    Restaurant Location
+                                </h3>
+
+                                {/* Address Input */}
+                                <div style={styles.formGroup}>
+                                    <label style={styles.label}>Restaurant Address</label>
+                                    <div style={styles.inputIcon}>
+                                        <input
+                                            name="address"
+                                            type="text"
+                                            placeholder="Enter full address"
+                                            value={formData.address || ''}
+                                            onChange={handleChange}
+                                            required={formData.role === 'restaurant'}
+                                            style={styles.inputField}
+                                            onFocus={(e) => Object.assign(e.target.style, styles.inputFieldFocus)}
+                                            onBlur={(e) => {
+                                                e.target.style.borderColor = 'rgba(255, 215, 0, 0.2)';
+                                                e.target.style.boxShadow = 'none';
+                                                e.target.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
+                                            }}
+                                        />
+                                        <div style={styles.iconWrapper}>
+                                            <MapPin size={18} style={{ color: '#666' }} />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Map */}
+                                <div style={{ marginTop: '15px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                        <label style={{ ...styles.label, marginBottom: '0' }}>Pin Location on Map</label>
+                                        <button
+                                            type="button"
+                                            onClick={handleFindMe}
+                                            style={{
+                                                background: 'rgba(255, 215, 0, 0.1)',
+                                                border: '1px solid rgba(255, 215, 0, 0.3)',
+                                                color: '#FFD700',
+                                                padding: '5px 12px',
+                                                borderRadius: '20px',
+                                                fontSize: '0.8rem',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '5px',
+                                                transition: 'all 0.3s ease'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.target.style.background = 'rgba(255, 215, 0, 0.2)';
+                                                e.target.style.transform = 'translateY(-1px)';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.target.style.background = 'rgba(255, 215, 0, 0.1)';
+                                                e.target.style.transform = 'translateY(0)';
+                                            }}
+                                        >
+                                            <Locate size={14} />
+                                            Find Me
+                                        </button>
+                                    </div>
+                                    <div style={{
+                                        height: '300px',
+                                        borderRadius: '12px',
+                                        overflow: 'hidden',
+                                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                                        position: 'relative',
+                                        zIndex: 0
+                                    }}>
+                                        <MapContainer center={location} zoom={13} style={{ height: '100%', width: '100%' }}>
+                                            <TileLayer
+                                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                            />
+                                            <LocationMarker location={location} setLocation={setLocation} />
+                                        </MapContainer>
+                                    </div>
+                                    <p style={{ color: '#aaa', fontSize: '0.8rem', marginTop: '8px', textAlign: 'center' }}>
+                                        Click on the map to set your exact location
+                                    </p>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Submit Button */}
                         <button
@@ -557,8 +807,8 @@ const Register = () => {
                     {/* Login Link */}
                     <p style={styles.footerText}>
                         Already have an account?{' '}
-                        <Link 
-                            to="/login" 
+                        <Link
+                            to="/login"
                             style={styles.footerLink}
                             onMouseEnter={(e) => e.target.style.color = '#FFA500'}
                             onMouseLeave={(e) => e.target.style.color = '#FFD700'}
@@ -568,7 +818,17 @@ const Register = () => {
                     </p>
                 </div>
             </div>
-        </div>
+
+
+            <CustomModal
+                isOpen={modalConfig.isOpen}
+                onClose={() => setModalConfig(prev => ({ ...prev, isOpen: false }))}
+                title={modalConfig.title}
+                message={modalConfig.message}
+                type={modalConfig.type}
+                onConfirm={modalConfig.onConfirm}
+            />
+        </div >
     );
 };
 

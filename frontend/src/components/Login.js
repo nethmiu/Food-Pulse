@@ -90,13 +90,13 @@ const Login = () => {
 
                     <form onSubmit={handleLogin}>
                         <div style={styles.formGroup}>
-                            <label style={styles.label}>Email or Username</label>
+                            <label style={styles.label}>Username</label>
                             <input
                                 style={styles.input}
                                 onFocus={(e) => Object.assign(e.target.style, styles.inputFocus)}
                                 onBlur={(e) => e.target.style.boxShadow = 'none'}
                                 type="text"
-                                placeholder="you@example.com"
+                                placeholder="Enter your username"
                                 value={identifier}
                                 onChange={(e) => setIdentifier(e.target.value)}
                                 required

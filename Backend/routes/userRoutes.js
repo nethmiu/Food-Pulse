@@ -1,12 +1,14 @@
 
 const express = require('express');
 const router = express.Router();
-const { registerUser, loginUser, getRestaurantStatus, updateRestaurantStatus, getRestaurantProfile, updateRestaurantProfile, deleteRestaurantAccount, changePassword } = require('../controllers/userController');
+const { registerUser, loginUser, getRestaurantStatus, updateRestaurantStatus, getRestaurantProfile, updateRestaurantProfile, deleteRestaurantAccount, changePassword, getAllRestaurants } = require('../controllers/userController');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 
 // Public Routes
 router.post('/register', registerUser); // සාමාන්‍ය අයට register වෙන්න
 router.post('/login', loginUser);       // Login වෙන්න
+router.get('/restaurants', getAllRestaurants); // Get all open restaurants (Public/Protected based on need, making it public/semi-protected mostly fine but let's keep it open for now or protect if needed. Plan said protect? Plan didn't specify, but customer flow usually protect. Let's add protect if they need to be logged in effectively.)
+// Actually customer is logged in, so protect is fine.
 
 // Admin විසින් අනිත් අයව register කරන route එක (Protected)
 // Frontend එකේදී Admin Dashboard එක හරහා මෙය භාවිතා වේ.

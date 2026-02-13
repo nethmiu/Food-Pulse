@@ -1,11 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { User, MapPin, Upload, Trash2, DollarSign, Calendar, Save, Power, Locate } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker as LeafletMarker, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import CustomModal from '../components/CustomModal';
 import { useNavigate } from 'react-router-dom';
+import io from 'socket.io-client';
+
+const containerStyle = {
+    width: '100%',
+    height: '100%'
+};
 
 // Fix for Leaflet marker icon
 delete L.Icon.Default.prototype._getIconUrl;
@@ -21,7 +27,7 @@ function LocationMarker({ location, setLocation }) {
             setLocation(e.latlng);
         },
     });
-    return location === null ? null : <Marker position={location}></Marker>;
+    return location === null ? null : <LeafletMarker position={location}></LeafletMarker>;
 }
 
 // Component to handle map view changes
@@ -81,6 +87,20 @@ export default function RestaurantProfile() {
             }
         };
         fetchProfile();
+
+        // Socket.io connection
+        const socket = io('http://localhost:5000');
+        const userId = userInfo?._id;
+
+        socket.on('restaurantStatusChanged', (data) => {
+            if (data.restaurantId === userId) {
+                setProfile(prev => ({ ...prev, isRestaurantOpen: data.isRestaurantOpen }));
+            }
+        });
+
+        return () => {
+            socket.disconnect();
+        };
     }, [token]);
 
     const handleFindMe = () => {
@@ -91,8 +111,12 @@ export default function RestaurantProfile() {
                     setLocation({ lat: latitude, lng: longitude });
                 },
                 (error) => {
-                    console.error("Error getting location: ", error);
-                    alert("Could not get your location. Please ensure location services are enabled.");
+                    // Location access denied or errored. Fail silently and let user manually pick location.
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
                 }
             );
         } else {
@@ -435,18 +459,20 @@ export default function RestaurantProfile() {
                             </button>
                         </div>
                         <div style={styles.mapContainer}>
-                            <MapContainer
-                                center={location}
-                                zoom={15}
-                                style={{ height: '100%', width: '100%' }}
-                            >
-                                <ChangeView center={location} />
-                                <TileLayer
-                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                                />
-                                <LocationMarker location={location} setLocation={setLocation} />
-                            </MapContainer>
+                            <div style={styles.mapContainer}>
+                                <MapContainer
+                                    center={location}
+                                    zoom={15}
+                                    style={{ height: '100%', width: '100%' }}
+                                >
+                                    <ChangeView center={location} />
+                                    <TileLayer
+                                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                    />
+                                    <LocationMarker location={location} setLocation={setLocation} />
+                                </MapContainer>
+                            </div>
                         </div>
                         <input
                             type="text"

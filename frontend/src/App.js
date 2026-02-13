@@ -22,19 +22,36 @@ import { Navigate } from 'react-router-dom';
 
 // ... other imports ...
 
+// Component to prevent access to login/register if already logged in
+const PublicRoute = ({ children }) => {
+  const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+
+  if (userInfo && userInfo.token) {
+    // Redirect based on role
+    if (userInfo.role === 'admin') return <Navigate to="/admin" replace />;
+    if (userInfo.role === 'restaurant') return <Navigate to="/restaurant" replace />;
+    if (userInfo.role === 'rider') return <Navigate to="/rider" replace />;
+    return <Navigate to="/customer" replace />;
+  }
+
+  return children;
+};
+
 function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+        <Route path="/" element={<PublicRoute><LandingPage /></PublicRoute>} />
+
+        {/* Public Routes - Redirect if already logged in */}
+        <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+        <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
 
         {/* --- Protected Routes --- */}
 
         {/* Customer Route (allowedRole="customer" ලෙස දෙන්න) */}
         <Route
-          path="/customer"
+          path="/customer/*"
           element={
             <ProtectedRoute allowedRole="customer">
               <CustomerHome />
