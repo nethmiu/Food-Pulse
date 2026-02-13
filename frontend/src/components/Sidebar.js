@@ -4,6 +4,8 @@ import { Menu, ShoppingBag, User, LogOut, ChevronDown, ChevronRight, Plus, List,
 import axios from 'axios';
 import CustomModal from './CustomModal';
 
+import io from 'socket.io-client';
+
 const Sidebar = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -13,6 +15,7 @@ const Sidebar = () => {
 
     const userInfo = JSON.parse(localStorage.getItem('userInfo'));
     const token = userInfo?.token;
+    const userId = userInfo?._id;
 
     useEffect(() => {
         const fetchStatus = async () => {
@@ -26,7 +29,20 @@ const Sidebar = () => {
             }
         };
         fetchStatus();
-    }, [token]);
+
+        // Socket.io connection
+        const socket = io('http://localhost:5000');
+
+        socket.on('restaurantStatusChanged', (data) => {
+            if (data.restaurantId === userId) {
+                setIsRestaurantOpen(data.isRestaurantOpen);
+            }
+        });
+
+        return () => {
+            socket.disconnect();
+        };
+    }, [token, userId]);
 
     const handleLogout = () => {
         localStorage.removeItem('userInfo');

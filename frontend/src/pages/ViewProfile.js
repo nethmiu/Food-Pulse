@@ -1,9 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { User, MapPin, Mail, Calendar, DollarSign, Store } from 'lucide-react';
-import { MapContainer, TileLayer, Marker } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker as LeafletMarker } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import io from 'socket.io-client';
+
+const containerStyle = {
+    width: '100%',
+    height: '100%'
+};
 
 // Fix for Leaflet marker icon
 delete L.Icon.Default.prototype._getIconUrl;
@@ -20,6 +26,8 @@ export default function ViewProfile() {
     const userInfo = JSON.parse(localStorage.getItem('userInfo'));
     const token = userInfo?.token;
 
+
+
     useEffect(() => {
         const fetchProfile = async () => {
             try {
@@ -33,7 +41,21 @@ export default function ViewProfile() {
             }
         };
         fetchProfile();
-    }, [token]);
+
+        // Socket.io connection
+        const socket = io('http://localhost:5000');
+        const userId = userInfo?._id;
+
+        socket.on('restaurantStatusChanged', (data) => {
+            if (data.restaurantId === userId) {
+                setProfile(prev => ({ ...prev, isRestaurantOpen: data.isRestaurantOpen }));
+            }
+        });
+
+        return () => {
+            socket.disconnect();
+        };
+    }, [token, userInfo?._id]);
 
     const styles = {
         container: {
@@ -246,8 +268,6 @@ export default function ViewProfile() {
                 </div>
             </div>
 
-
-
             {/* Location Section */}
             <div style={styles.card}>
                 <h2 style={styles.cardTitle}><MapPin size={20} /> Location</h2>
@@ -264,7 +284,7 @@ export default function ViewProfile() {
                         <TileLayer
                             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                         />
-                        <Marker position={location} />
+                        <LeafletMarker position={location} />
                     </MapContainer>
                 </div>
             </div>

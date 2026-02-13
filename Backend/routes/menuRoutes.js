@@ -111,4 +111,34 @@ router.delete('/delete/:id', protect, async (req, res) => {
     }
 });
 
+// Route: Get Menu Items for a specific Restaurant (Public)
+router.get('/public/:restaurantId', async (req, res) => {
+    try {
+        const items = await MenuItem.find({ restaurantId: req.params.restaurantId });
+        res.json(items);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// Route: Search Menu Items (Public)
+router.get('/search/items', async (req, res) => {
+    try {
+        const { query } = req.query;
+        if (!query) return res.json([]);
+
+        // Search for items with name matching query (case insensitive)
+        const items = await MenuItem.find({
+            name: { $regex: query, $options: 'i' }
+        });
+
+        // We might want to populate restaurant details if needed, but for now just returning items is fine.
+        // The frontend can fetch restaurant details separately or we can aggregate.
+        // Let's keep it simple: return items, frontend displays them.
+        res.json(items);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
 module.exports = router;

@@ -9,16 +9,15 @@ const generateToken = (id, role) => {
 
 // Register User
 const registerUser = async (req, res) => {
-    const { name, email, password, role } = req.body;
+    const { name, username, email, phone, password, role, address, location } = req.body;
 
     try {
-        // User දැනටමත් සිටීදැයි පරීක්ෂා කිරීම
-        const userExists = await User.findOne({ email });
-        if (userExists) return res.status(400).json({ message: 'User already exists' });
+        // User දැනටමත් සිටීදැයි පරීක්ෂා කිරීම (Check if user exists by email OR username)
+        const userExists = await User.findOne({ $or: [{ email }, { username }] });
+        if (userExists) return res.status(400).json({ message: 'User already exists (Email or Username taken)' });
 
         // Admin කෙනෙක් හදන්නෙ Admin කෙනෙක්මද කියලා check කිරීම (සරලව)
-        // Note: මෙය Frontend එකෙන් admin ව select කිරීමේදී පාලනය කල හැක.
-        // නමුත් ආරක්ෂාවට මෙතන check එකක් දැමිය හැක.
+        // ... (rest of comments)
 
         // Password Hash කිරීම (ආරක්ෂිත කිරීම)
         const salt = await bcrypt.genSalt(10);
@@ -26,15 +25,20 @@ const registerUser = async (req, res) => {
 
         const user = await User.create({
             name,
+            username,
             email,
+            phone,
             password: hashedPassword,
-            role: role || 'customer'
+            role: role || 'customer',
+            address,
+            location
         });
 
         if (user) {
             res.status(201).json({
                 _id: user.id,
                 name: user.name,
+                username: user.username,
                 email: user.email,
                 role: user.role,
                 token: generateToken(user._id, user.role)
@@ -49,24 +53,27 @@ const registerUser = async (req, res) => {
 
 // Login User
 const loginUser = async (req, res) => {
-    const { identifier, password } = req.body; // identifier can be email or name
+    const { identifier, password } = req.body; // identifier is the username
 
     try {
-        // Email එකෙන් හෝ Name එකෙන් User සෙවීම
-        const user = await User.findOne({
-            $or: [{ email: identifier }, { name: identifier }]
-        });
+        // Username එකෙන් User සෙවීම (Search by username only as per requirement)
+        // If you want to support both email OR username, use $or: [{ email: identifier }, { username: identifier }]
+        // But user asked "login username... instead email". So let's prioritize username, but usually systems allow both.
+        // Let's stick to the prompt "login username and password insted email".
+        // Use Username to find user.
+        const user = await User.findOne({ username: identifier });
 
         if (user && (await bcrypt.compare(password, user.password))) {
             res.json({
                 _id: user.id,
                 name: user.name,
+                username: user.username,
                 email: user.email,
                 role: user.role,
                 token: generateToken(user._id, user.role)
             });
         } else {
-            res.status(401).json({ message: 'Invalid email/username or password' });
+            res.status(401).json({ message: 'Invalid username or password' });
         }
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -100,12 +107,30 @@ const updateRestaurantStatus = async (req, res) => {
         user.isRestaurantOpen = isOpen;
         await user.save();
 
+        // Emit event to notify clients
+        req.io.emit('restaurantStatusChanged', { restaurantId: user._id, isRestaurantOpen: user.isRestaurantOpen });
+
         res.json({ message: `Restaurant is now ${isOpen ? 'Open' : 'Closed'}`, isRestaurantOpen: user.isRestaurantOpen });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
+
+
+// Get All Open Restaurants (Public/Customer)
+const getAllRestaurants = async (req, res) => {
+    try {
+        // Fetch only basic info: id, name, image, description, address, location
+        // Filter by role='restaurant' and isRestaurantOpen=true
+        const restaurants = await User.find({ role: 'restaurant', isRestaurantOpen: true })
+            .select('_id name email image address description location isRestaurantOpen');
+
+        res.json(restaurants);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
 
 // --- New Profile Functions ---
 
@@ -248,5 +273,6 @@ module.exports = {
     getRestaurantProfile,
     updateRestaurantProfile,
     deleteRestaurantAccount,
-    changePassword
+    changePassword,
+    getAllRestaurants
 };
