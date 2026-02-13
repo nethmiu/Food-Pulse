@@ -3,6 +3,8 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Save, Eye, EyeOff, AlertTriangle, CheckCircle } from 'lucide-react';
 import CustomModal from '../components/CustomModal';
+import CustomerSidebar from '../components/CustomerSidebar';
+import CustomerProfileHeader from '../components/CustomerProfileHeader';
 
 export default function ChangePassword() {
     const navigate = useNavigate();
@@ -21,6 +23,7 @@ export default function ChangePassword() {
 
     const userInfo = JSON.parse(localStorage.getItem('userInfo'));
     const token = userInfo?.token;
+    const isCustomer = userInfo?.role === 'customer';
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -101,7 +104,6 @@ export default function ChangePassword() {
             padding: '40px',
             fontFamily: "'Inter', sans-serif",
             color: '#fff',
-            maxWidth: '600px',
             margin: '0 auto'
         },
         title: {
@@ -118,7 +120,8 @@ export default function ChangePassword() {
             borderRadius: '20px',
             padding: '40px',
             border: '1px solid rgba(255, 255, 255, 0.1)',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.3)'
+            boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+            width: '600px'
         },
         inputGroup: {
             marginBottom: '24px',
@@ -175,7 +178,7 @@ export default function ChangePassword() {
     const isMatchValid = formData.newPassword === formData.confirmPassword && formData.newPassword !== '';
     const isFormValid = isLengthValid && isMatchValid && formData.currentPassword;
 
-    return (
+    const content = (
         <div style={styles.container}>
             <h1 style={styles.title}>Change Password</h1>
 
@@ -268,4 +271,20 @@ export default function ChangePassword() {
             />
         </div>
     );
+
+    if (isCustomer) {
+        return (
+            <div style={{ display: 'flex', minHeight: '100vh', background: '#0a0a0a' }}>
+                <CustomerSidebar />
+                <div style={{ flex: 1, marginLeft: '260px', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ padding: '20px 40px', display: 'flex', justifyContent: 'flex-end' }}>
+                        <CustomerProfileHeader />
+                    </div>
+                    {content}
+                </div>
+            </div>
+        );
+    }
+
+    return content;
 }

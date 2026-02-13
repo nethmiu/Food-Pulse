@@ -2,12 +2,42 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useLocation, useNavigate } from 'react-router-dom';
 import CustomerSidebar from '../components/CustomerSidebar';
-import { Search, MapPin, Star, Plus, Minus, Trash2, ShoppingBag, X, ChevronLeft } from 'lucide-react';
+import CustomerProfileHeader from '../components/CustomerProfileHeader';
+import { Search, MapPin, Star, Plus, Minus, Trash2, ShoppingBag, X, ChevronLeft, Filter, SlidersHorizontal, DollarSign, Navigation, User } from 'lucide-react';
 import CustomModal from '../components/CustomModal';
+
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+
+// Fix Leaflet marker icon issue
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
+  iconUrl: require('leaflet/dist/images/marker-icon.png'),
+  shadowUrl: require('leaflet/dist/images/marker-shadow.png')
+});
+
+const haversineDistance = (coords1, coords2) => {
+  if (!coords1 || !coords2) return null;
+  const toRad = (x) => (x * Math.PI) / 180;
+  const R = 6371; // km
+  const dLat = toRad(coords2.lat - coords1.lat);
+  const dLon = toRad(coords2.lng - coords1.lng);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(coords1.lat)) *
+    Math.cos(toRad(coords2.lat)) *
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
 
 const CustomerHome = () => {
   const [view, setView] = useState('list'); // 'list', 'restaurant', 'cart'
   const [restaurants, setRestaurants] = useState([]);
+  const [allRestaurants, setAllRestaurants] = useState([]); // Master list
   const [selectedRestaurant, setSelectedRestaurant] = useState(null);
   const [menuItems, setMenuItems] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -16,8 +46,112 @@ const CustomerHome = () => {
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', type: 'success' });
   const pendingCartItemRef = React.useRef(null); // Item waiting for confirmation
   const [searchFocused, setSearchFocused] = useState(false);
+  const [dynamicMaxPrice, setDynamicMaxPrice] = useState(10000);
+  const [minPrice, setMinPrice] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Location State
+  const [userLocation, setUserLocation] = useState(() => {
+    const saved = localStorage.getItem('userLocation');
+    return saved ? JSON.parse(saved) : null;
+  }); // { lat, lng }
+
+  const [locationModalOpen, setLocationModalOpen] = useState(() => {
+    return !localStorage.getItem('userLocation');
+  });
+
+  const [tempLocation, setTempLocation] = useState(null);
+  const [locationSearchQuery, setLocationSearchQuery] = useState(''); // New search state
+  const [searchResult, setSearchResult] = useState(null); // To center map
+
+  // Component to recenter map
+  const MapRecenter = ({ lat, lng }) => {
+    const map = useMap();
+    useEffect(() => {
+      if (lat && lng) {
+        map.flyTo([lat, lng], 13);
+      }
+    }, [lat, lng, map]);
+    return null;
+  };
+
+  // Location Picker Map Component
+  const LocationMarker = () => {
+    useMapEvents({
+      click(e) {
+        setTempLocation(e.latlng);
+      },
+    });
+    return tempLocation ? <Marker position={tempLocation} /> : null;
+  };
+
+  const handleLocationSearch = async () => {
+    if (!locationSearchQuery.trim()) return;
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearchQuery)}`);
+      const data = await response.json();
+      if (data && data.length > 0) {
+        const { lat, lon } = data[0];
+        const newLoc = { lat: parseFloat(lat), lng: parseFloat(lon) };
+        setTempLocation(newLoc);
+        setSearchResult(newLoc); // Triggers MapRecenter
+      } else {
+        alert('Location not found');
+      }
+    } catch (error) {
+      console.error("Geocoding error:", error);
+      alert('Error searching for location');
+    }
+  };
+
+  const handleFindMe = () => {
+    if (navigator.geolocation) {
+      const options = {
+        enableHighAccuracy: false, // Changed to false for better reliability on desktops
+        timeout: 15000,
+        maximumAge: 0
+      };
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          setTempLocation({ lat: latitude, lng: longitude });
+        },
+        (error) => {
+          console.error("Geolocation error:", error);
+          let errorMessage = "Unable to retrieve your location.";
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+              errorMessage = "Location permission denied. Please enable it in your browser settings.";
+              break;
+            case error.POSITION_UNAVAILABLE:
+              errorMessage = "Location information is unavailable.";
+              break;
+            case error.TIMEOUT:
+              errorMessage = "The request to get your location timed out.";
+              break;
+            default:
+              errorMessage = `An unknown error occurred: ${error.message}`;
+              break;
+          }
+          alert(errorMessage);
+        },
+        options
+      );
+    } else {
+      alert("Geolocation is not supported by this browser.");
+    }
+  };
+
+  const confirmLocation = () => {
+    if (tempLocation) {
+      setUserLocation(tempLocation);
+      localStorage.setItem('userLocation', JSON.stringify(tempLocation));
+      setLocationModalOpen(false);
+      // Trigger filter? useEffect will handle it
+    }
+  };
 
   // Sync view with URL
   useEffect(() => {
@@ -32,39 +166,70 @@ const CustomerHome = () => {
   // Auto Search Effect
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
-      // If query is empty, we might typically show all restaurants, 
-      // but fetchRestaurants handles that if we call it.
-      // However, we don't want to re-fetch on every empty string if already loaded.
-      // Let's reuse handleSearch logic but wrapped here.
-      if (searchQuery.trim()) {
-        performSearch();
-      } else {
-        // If cleared, go back to list if not already
-        if (view === 'search-results') {
-          fetchRestaurants();
-          setView('list');
-        }
-      }
-    }, 500); // 500ms debounce
-
+      applyFilters();
+    }, 500);
     return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery]);
+  }, [searchQuery, userLocation, allRestaurants]);
 
-  const performSearch = async () => {
+  const applyFilters = async () => {
+    // If no master list yet, do nothing (wait for fetch)
+    if (allRestaurants.length === 0) return;
+
     setLoading(true);
     try {
-      const matchedRestaurants = restaurants.filter(r => r.name.toLowerCase().includes(searchQuery.toLowerCase()));
+      // Enforce Location: If no location, show nothing
+      if (!userLocation) {
+        setRestaurants([]);
+        if (view === 'list') {
+          // We will handle the "Please select location" in UI
+        }
+        setLoading(false);
+        return;
+      }
 
-      if (matchedRestaurants.length > 0) {
-        setRestaurants(matchedRestaurants);
-        setView('list');
+      let filtered = [...allRestaurants];
+
+      // 1. Text Search (Restaurant Name)
+      if (searchQuery.trim()) {
+        filtered = filtered.filter(r => r.name.toLowerCase().includes(searchQuery.toLowerCase()));
+      }
+
+      // 2. Location Filter (Strict 10km)
+      filtered = filtered.filter(r => {
+        if (!r.location || !r.location.lat || !r.location.lng) return false;
+        const dist = haversineDistance(userLocation, r.location);
+        return dist <= 10;
+      });
+
+      if (filtered.length > 0 || !searchQuery.trim()) {
+        setRestaurants(filtered);
+        if (view === 'search-results') setView('list');
       } else {
-        const res = await axios.get(`http://localhost:5000/api/menu/search/items?query=${searchQuery}`);
-        if (res.data.length > 0) {
-          setMenuItems(res.data);
-          setView('search-results');
+        // Global Search for Items
+        if (searchQuery.trim()) {
+          const res = await axios.get(`http://localhost:5000/api/menu/search/items?query=${searchQuery}`);
+          let items = res.data;
+
+          // Strict Location Filter for Items too
+          items = items.filter(item => {
+            const rest = allRestaurants.find(r => r._id === item.restaurantId || r._id === item.restaurantId?._id);
+            if (!rest || !rest.location) return false;
+            return haversineDistance(userLocation, rest.location) <= 10;
+          });
+
+          if (items.length > 0) {
+            setMenuItems(items);
+            // Calculate Max Price for search results
+            const maxPrice = Math.max(...items.map(item => item.price));
+            setDynamicMaxPrice(maxPrice);
+            setPriceRange(maxPrice);
+            setView('search-results');
+          } else {
+            setRestaurants([]);
+            setView('list');
+          }
         } else {
-          setRestaurants([]);
+          setRestaurants(filtered);
           setView('list');
         }
       }
@@ -84,7 +249,8 @@ const CustomerHome = () => {
     setLoading(true);
     try {
       const res = await axios.get('http://localhost:5000/api/users/restaurants');
-      setRestaurants(res.data);
+      setAllRestaurants(res.data);
+      // Do NOT setRestaurants(res.data) initially. Wait for location.
     } catch (error) {
       console.error(error);
     } finally {
@@ -102,6 +268,17 @@ const CustomerHome = () => {
     try {
       const res = await axios.get(`http://localhost:5000/api/menu/public/${restaurant._id}`);
       setMenuItems(res.data);
+
+      // Calculate Max Price for the slider
+      if (res.data.length > 0) {
+        const maxPrice = Math.max(...res.data.map(item => item.price));
+        setDynamicMaxPrice(maxPrice);
+        setPriceRange(maxPrice); // Set slider to max by default
+      } else {
+        setDynamicMaxPrice(5000);
+        setPriceRange(5000);
+      }
+
       setView('restaurant');
     } catch (error) {
       console.error(error);
@@ -109,6 +286,33 @@ const CustomerHome = () => {
       setLoading(false);
     }
   };
+
+  /* --- Filter States --- */
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [priceRange, setPriceRange] = useState(10000); // Max price slider, default high enough
+
+  // Reset filters when view changes or restaurant selected
+  useEffect(() => {
+    // Only reset if we are NOT in search results view or if search is cleared
+    // But actually, we want to reset when entering a NEW restaurant or clearing search.
+    // If we are just typing, we handle price updates in applyFilters.
+    if (view !== 'search-results') {
+      setSelectedCategory('All');
+      // We do not force setPriceRange(10000) here if we want to support dynamic prices.
+      // But for general list view, maybe we do.
+      // Let's just remove searchQuery dependency so it doesn't reset EVERY TIME we type.
+    }
+  }, [view, selectedRestaurant]);
+
+  // Derived state for filters
+  const categories = ['All', ...new Set(menuItems.map(item => item.category))];
+  const filteredItems = menuItems.filter(item => {
+    const matchCategory = selectedCategory === 'All' || item.category === selectedCategory;
+    const matchPrice = item.price >= minPrice && item.price <= priceRange;
+    return matchCategory && matchPrice;
+  });
+
+  const [selectedItems, setSelectedItems] = useState([]);
 
   // Fetch cart on load
   useEffect(() => {
@@ -122,8 +326,26 @@ const CustomerHome = () => {
       const config = { headers: { Authorization: `Bearer ${userInfo.token}` } };
       const { data } = await axios.get('http://localhost:5000/api/cart', config);
       setCart(data);
+      // Default to selecting all items when cart loads so user doesn't have to manually select
+      setSelectedItems(data.map(item => item._id));
     } catch (error) {
       console.error("Failed to fetch cart", error);
+    }
+  };
+
+  const toggleSelection = (itemId) => {
+    setSelectedItems(prev =>
+      prev.includes(itemId)
+        ? prev.filter(id => id !== itemId)
+        : [...prev, itemId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedItems.length === cart.length) {
+      setSelectedItems([]);
+    } else {
+      setSelectedItems(cart.map(item => item._id));
     }
   };
 
@@ -205,16 +427,23 @@ const CustomerHome = () => {
   };
 
   const calculateTotal = () => {
-    return cart.reduce((total, item) => total + (item.price * item.quantity), 0);
+    return cart
+      .filter(item => selectedItems.includes(item._id))
+      .reduce((total, item) => total + (item.price * item.quantity), 0);
   };
 
   const placeOrder = async () => {
-    if (cart.length === 0) return;
+    const itemsToOrder = cart.filter(item => selectedItems.includes(item._id));
+
+    if (itemsToOrder.length === 0) {
+      setModal({ isOpen: true, title: 'Error', message: 'Please select at least one item to order.', type: 'error' });
+      return;
+    }
 
     try {
       const userInfo = JSON.parse(localStorage.getItem('userInfo'));
       const orderData = {
-        items: cart.map(item => ({
+        items: itemsToOrder.map(item => ({
           menuItemId: item._id,
           quantity: item.quantity,
           price: item.price,
@@ -269,17 +498,18 @@ const CustomerHome = () => {
     searchBar: {
       display: 'flex',
       alignItems: 'center',
-      background: 'rgba(255, 255, 255, 0.05)',
+      background: '#fff',  // White background
       border: '1px solid rgba(255, 215, 0, 0.2)',
-      borderRadius: '12px',
-      padding: '10px 16px',
+      borderRadius: '50px',
+      padding: '6px 16px', // Reduced height
       width: '400px',
+      height: '60px',
       gap: '10px'
     },
     input: {
       background: 'transparent',
       border: 'none',
-      color: '#fff',
+      color: '#000', // Black text
       width: '100%',
       outline: 'none',
       fontSize: '14px'
@@ -435,35 +665,165 @@ const CustomerHome = () => {
             />
           </div>
 
-          <button
-            style={{ background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
-            onClick={() => setView(view === 'cart' ? 'list' : 'cart')}
-          >
-            <ShoppingBag size={28} color="#FFD700" />
-            {cart.length > 0 && (
-              <span style={{
-                position: 'absolute',
-                top: '-5px',
-                right: '-5px',
-                background: '#ff4444',
+          <div style={{ display: 'flex', gap: '15px' }}>
+            <CustomerProfileHeader />
+
+            <button
+              style={{
+                background: 'rgba(255, 255, 255, 0.1)',
+                border: '1px solid rgba(255, 215, 0, 0.2)',
                 color: '#fff',
-                borderRadius: '50%',
-                width: '18px',
-                height: '18px',
-                fontSize: '11px',
+                padding: '8px 16px',
+                borderRadius: '50px',
+                cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 'bold'
-              }}>
-                {cart.length}
-              </span>
-            )}
-          </button>
+                gap: '8px',
+                fontSize: '14px',
+              }}
+              onClick={() => setLocationModalOpen(true)}
+            >
+              <Navigation size={16} color="#FFD700" />
+              {userLocation ? `${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}` : 'Select Location'}
+            </button>
+
+            <button
+              style={{ background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
+              onClick={() => {
+                if (view === 'cart') {
+                  navigate('/customer'); // Go back to list/home
+                } else {
+                  navigate('/customer/cart'); // Go to cart
+                }
+              }}
+            >
+              <ShoppingBag size={28} color="#FFD700" />
+              {cart.length > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: '-5px',
+                  right: '-5px',
+                  background: '#ff4444',
+                  color: '#fff',
+                  borderRadius: '50%',
+                  width: '18px',
+                  height: '18px',
+                  fontSize: '11px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 'bold'
+                }}>
+                  {cart.length}
+                </span>
+              )}
+            </button>
+          </div>
+
+
         </div>
+
+        {/* Location Modal */}
+        {locationModalOpen && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.8)', zIndex: 1000,
+            display: 'flex', justifyContent: 'center', alignItems: 'center'
+          }}>
+            <div style={{
+              background: '#1a1a1a', padding: '30px', borderRadius: '16px',
+              width: '600px', maxWidth: '90%', border: '1px solid #333'
+            }}>
+              <h2 style={{ color: '#FFD700', marginBottom: '20px' }}>Select Your Location</h2>
+
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="Search city or address..."
+                  value={locationSearchQuery}
+                  onChange={(e) => setLocationSearchQuery(e.target.value)}
+                  style={{
+                    flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #444',
+                    background: '#222', color: '#fff'
+                  }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleLocationSearch()}
+                />
+                <button
+                  onClick={handleLocationSearch}
+                  style={{
+                    background: '#FFD700', color: '#000', border: 'none', borderRadius: '8px',
+                    padding: '10px 20px', cursor: 'pointer', fontWeight: 'bold'
+                  }}
+                >
+                  Search
+                </button>
+              </div>
+
+              <div style={{ marginBottom: '20px', height: '300px', borderRadius: '12px', overflow: 'hidden' }}>
+                <MapContainer center={[6.9271, 79.8612]} zoom={13} style={{ height: '100%', width: '100%' }}>
+                  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                  <LocationMarker />
+                  {searchResult && <MapRecenter lat={searchResult.lat} lng={searchResult.lng} />}
+                </MapContainer>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <button
+                  onClick={handleFindMe}
+                  style={{
+                    background: '#333', color: '#fff', border: 'none',
+                    padding: '10px 20px', borderRadius: '8px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '8px'
+                  }}
+                >
+                  <User size={16} /> Find Me (GPS)
+                </button>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    onClick={() => setLocationModalOpen(false)}
+                    style={{ padding: '10px 20px', background: 'transparent', color: '#aaa', border: 'none', cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmLocation}
+                    style={{
+                      padding: '10px 20px', background: '#FFD700', color: '#000',
+                      border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer'
+                    }}
+                  >
+                    Confirm Location
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {view === 'list' && (
           <div style={styles.grid}>
+            {!userLocation && (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '50px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '16px' }}>
+                <MapPin size={48} color="#FFD700" style={{ marginBottom: '20px' }} />
+                <h2 style={{ color: '#fff', marginBottom: '10px' }}>Location Required</h2>
+                <p style={{ color: '#aaa', marginBottom: '20px' }}>Please select your location to find nearby restaurants (within 10km).</p>
+                <button
+                  onClick={() => setLocationModalOpen(true)}
+                  style={{ padding: '12px 24px', background: '#FFD700', color: '#000', border: 'none', borderRadius: '50px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}
+                >
+                  Select Location
+                </button>
+                <p style={{ color: '#666', marginTop: '15px', fontSize: '13px' }}>
+                  (Click "Find Me" in the map to use GPS)
+                </p>
+              </div>
+            )}
+
+            {userLocation && restaurants.length === 0 && !loading && (
+              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '50px' }}>
+                <p style={{ color: '#aaa', fontSize: '18px' }}>No restaurants found within 10km of your location.</p>
+              </div>
+            )}
+
             {restaurants.map(restaurant => (
               <div
                 key={restaurant._id}
@@ -494,8 +854,34 @@ const CustomerHome = () => {
               <ChevronLeft size={16} /> Back to Restaurants
             </button>
 
+            <div style={{ padding: '20px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', marginBottom: '20px', display: 'flex', gap: '20px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ color: '#aaa', fontSize: '14px' }}>Category:</span>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  style={{ padding: '8px', borderRadius: '8px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                >
+                  {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ color: '#aaa', fontSize: '14px' }}>Max Price: Rs. {priceRange}</span>
+                <input
+                  type="range"
+                  min="0"
+                  max={dynamicMaxPrice}
+                  step="100"
+                  value={priceRange}
+                  onChange={(e) => setPriceRange(Number(e.target.value))}
+                  style={{ accentColor: '#FFD700', width: '300px' }}
+                />
+              </div>
+
+            </div>
+
             <div style={styles.menuGrid}>
-              {menuItems.map(item => (
+              {filteredItems.map(item => (
                 <div key={item._id} style={styles.menuCard}>
                   <img
                     src={`http://localhost:5000/uploads/${item.image}`}
@@ -527,8 +913,23 @@ const CustomerHome = () => {
             <button style={styles.backBtn} onClick={() => { setSearchQuery(''); fetchRestaurants(); setView('list'); }}>
               <ChevronLeft size={16} /> Clear Search
             </button>
+
+            <div style={{ padding: '20px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', marginBottom: '20px', marginTop: '10px', display: 'flex', gap: '20px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ color: '#aaa', fontSize: '14px' }}>Category:</span>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  style={{ padding: '8px', borderRadius: '8px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                >
+                  {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                </select>
+              </div>
+
+            </div>
+
             <div style={styles.menuGrid}>
-              {menuItems.map(item => (
+              {filteredItems.map(item => (
                 <div key={item._id} style={styles.menuCard}>
                   <img
                     src={`http://localhost:5000/uploads/${item.image}`}
@@ -558,50 +959,98 @@ const CustomerHome = () => {
 
         {view === 'cart' && (
           <div style={styles.cartPanel}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2 style={{ ...styles.title, fontSize: '24px' }}>Your Cart</h2>
               <button style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }} onClick={() => setView('list')}><X size={24} /></button>
             </div>
 
+            {cart.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', paddingBottom: '15px', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '15px' }}>
+                <input
+                  type="checkbox"
+                  checked={selectedItems.length === cart.length && cart.length > 0}
+                  onChange={toggleSelectAll}
+                  style={{ width: '22px', height: '22px', cursor: 'pointer', marginRight: '12px', accentColor: '#FFD700' }}
+                />
+                <span style={{ fontSize: '18px', fontWeight: '500', color: '#fff' }}>Select All ({cart.length} items)</span>
+              </div>
+            )}
+
             {cart.length === 0 ? (
-              <p style={{ color: '#666', textAlign: 'center', marginTop: '50px' }}>Your cart is empty.</p>
+              <p style={{ color: '#666', textAlign: 'center', marginTop: '50px', fontSize: '18px' }}>Your cart is empty.</p>
             ) : (
               <>
                 <div style={{ flex: 1, overflowY: 'auto' }}>
                   {cart.map(item => (
-                    <div key={item._id} style={styles.cartItem}>
+                    <div key={item._id} style={{ ...styles.cartItem, background: selectedItems.includes(item._id) ? 'rgba(255, 215, 0, 0.08)' : 'rgba(255, 255, 255, 0.05)', padding: '15px', borderRadius: '12px', marginBottom: '15px' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedItems.includes(item._id)}
+                        onChange={() => toggleSelection(item._id)}
+                        style={{ width: '22px', height: '22px', cursor: 'pointer', marginRight: '15px', accentColor: '#FFD700' }}
+                      />
                       <img
                         src={`http://localhost:5000/uploads/${item.image}`}
-                        style={{ width: '60px', height: '60px', borderRadius: '8px', objectFit: 'cover' }}
+                        style={{ width: '90px', height: '90px', borderRadius: '10px', objectFit: 'cover' }}
                         alt=""
                       />
-                      <div style={{ flex: 1 }}>
-                        <h4 style={{ color: '#fff', fontSize: '14px', marginBottom: '4px' }}>{item.name}</h4>
-                        <div style={{ color: '#FFD700', fontSize: '13px' }}>Rs. {item.price * item.quantity}</div>
+                      <div style={{ flex: 1, paddingLeft: '15px' }}>
+                        <h4 style={{ color: '#fff', fontSize: '20px', marginBottom: '8px', fontWeight: 'bold' }}>{item.name}</h4>
+                        <div style={{ color: '#FFD700', fontSize: '18px', fontWeight: '500' }}>Rs. {item.price * item.quantity}</div>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <button style={styles.qtyBtn} onClick={() => updateQuantity(item._id, -1)}><Minus size={12} /></button>
-                          <span style={{ fontSize: '13px' }}>{item.quantity}</span>
-                          <button style={styles.qtyBtn} onClick={() => updateQuantity(item._id, 1)}><Plus size={12} /></button>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <button style={styles.qtyBtn} onClick={() => updateQuantity(item._id, -1)}><Minus size={16} /></button>
+                          <span style={{ fontSize: '18px', fontWeight: 'bold' }}>{item.quantity}</span>
+                          <button style={styles.qtyBtn} onClick={() => updateQuantity(item._id, 1)}><Plus size={16} /></button>
                         </div>
                         <button
                           onClick={() => removeFromCart(item._id)}
-                          style={{ background: 'none', border: 'none', color: '#ff4444', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#ff4444',
+                            fontSize: '14px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            marginTop: '10px',
+                            padding: '6px 10px',
+                            borderRadius: '6px'
+                          }}
+                          onMouseOver={(e) => e.target.style.background = 'rgba(255, 68, 68, 0.1)'}
+                          onMouseOut={(e) => e.target.style.background = 'none'}
                         >
-                          <Trash2 size={12} /> Remove
+                          <Trash2 size={16} /> Remove
                         </button>
                       </div>
                     </div>
                   ))}
                 </div>
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', fontSize: '18px', fontWeight: '600' }}>
-                    <span>Total</span>
-                    <span style={{ color: '#FFD700' }}>Rs. {calculateTotal()}</span>
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '25px', marginTop: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '25px', fontSize: '20px', fontWeight: '700' }}>
+                    <span>Total ({selectedItems.length} items)</span>
+                    <span style={{ color: '#FFD700', fontSize: '24px' }}>Rs. {calculateTotal()}</span>
                   </div>
                   <button
-                    style={{ ...styles.cartBtn, width: '100%', justifyContent: 'center' }}
+                    style={{
+                      ...styles.cartBtn,
+                      width: '100%',
+                      justifyContent: 'center',
+                      fontSize: '18px',
+                      padding: '15px',
+                      borderRadius: '12px',
+                      background: 'linear-gradient(135deg, #FFD700 0%, #FFC107 100%)',
+                      color: '#000',
+                      fontWeight: '700',
+                      boxShadow: '0 4px 15px rgba(255, 215, 0, 0.3)',
+                      transition: 'transform 0.2s, box-shadow 0.2s',
+                      cursor: 'pointer',
+                      border: 'none'
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(255, 215, 0, 0.4)'; }}
+                    onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 15px rgba(255, 215, 0, 0.3)'; }}
                     onClick={placeOrder}
                   >
                     Place Order
@@ -623,7 +1072,7 @@ const CustomerHome = () => {
         onClose={() => setModal({ ...modal, isOpen: false })}
         onConfirm={modal.onConfirm || (() => setModal({ ...modal, isOpen: false }))}
       />
-    </div>
+    </div >
   );
 };
 

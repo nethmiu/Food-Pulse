@@ -3,6 +3,7 @@ import { Package, Edit2, Trash2, Plus, Search, Filter, List, DollarSign } from '
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import CustomModal from '../components/CustomModal';
+import RestaurantProfileHeader from '../components/RestaurantProfileHeader';
 
 export default function MenuList() {
     const [menuItems, setMenuItems] = useState([]);

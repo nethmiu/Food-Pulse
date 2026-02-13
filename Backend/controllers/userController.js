@@ -70,6 +70,7 @@ const loginUser = async (req, res) => {
                 username: user.username,
                 email: user.email,
                 role: user.role,
+                image: user.image,
                 token: generateToken(user._id, user.role)
             });
         } else {
@@ -134,13 +135,17 @@ const getAllRestaurants = async (req, res) => {
 
 // --- New Profile Functions ---
 
-// Get Restaurant Profile & Stats
-const getRestaurantProfile = async (req, res) => {
+// Get User Profile (Handles both Customer and Restaurant)
+const getUserProfile = async (req, res) => {
     try {
         const user = await User.findById(req.user.id).select('-password');
         if (!user) return res.status(404).json({ message: 'User not found' });
 
-        // Calculate Stats
+        if (user.role === 'customer' || user.role === 'rider') {
+            return res.json({ user });
+        }
+
+        // If Restaurant, calculate stats
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -189,16 +194,20 @@ const getRestaurantProfile = async (req, res) => {
     }
 };
 
-// Update Restaurant Profile
-const updateRestaurantProfile = async (req, res) => {
+// Update User Profile (Handles both Customer and Restaurant)
+const updateUserProfile = async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
         if (!user) return res.status(404).json({ message: 'User not found' });
 
-        const { name, email, address, location, description } = req.body;
+        console.log("Update Profile Data:", req.body);
+        console.log("Update Profile File:", req.file);
+
+        const { name, email, phone, address, location, description } = req.body;
 
         if (name) user.name = name;
         if (email) user.email = email;
+        if (phone) user.phone = phone;
         if (address) user.address = address;
         if (description) user.description = description;
         if (location) user.location = JSON.parse(location); // Expecting result from JSON.stringify
@@ -213,6 +222,7 @@ const updateRestaurantProfile = async (req, res) => {
             _id: updatedUser._id,
             name: updatedUser.name,
             email: updatedUser.email,
+            phone: updatedUser.phone,
             role: updatedUser.role,
             image: updatedUser.image,
             address: updatedUser.address,
@@ -225,13 +235,20 @@ const updateRestaurantProfile = async (req, res) => {
     }
 };
 
-// Delete Restaurant Account
-const deleteRestaurantAccount = async (req, res) => {
+// Delete User Account
+const deleteUserAccount = async (req, res) => {
     try {
+        const { email } = req.body;
         const user = await User.findById(req.user.id);
+
         if (!user) return res.status(404).json({ message: 'User not found' });
 
-        // Optional: Delete related menu items and orders?
+        // Verify email before deletion
+        if (!email || email !== user.email) {
+            return res.status(400).json({ message: 'Email verification failed. Please enter your registered email.' });
+        }
+
+        // Optional: Delete related menu items and orders if it's a restaurant
         // await MenuItem.deleteMany({ restaurantId: user._id });
         // await Order.deleteMany({ restaurantId: user._id });
 
@@ -270,9 +287,9 @@ module.exports = {
     loginUser,
     getRestaurantStatus,
     updateRestaurantStatus,
-    getRestaurantProfile,
-    updateRestaurantProfile,
-    deleteRestaurantAccount,
+    getUserProfile,
+    updateUserProfile,
+    deleteUserAccount,
     changePassword,
     getAllRestaurants
 };

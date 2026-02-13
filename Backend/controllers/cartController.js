@@ -18,7 +18,7 @@ exports.getCart = async (req, res) => {
                 price: item.menuItemId.price, // Use current price from menu item
                 image: item.menuItemId.image,
                 quantity: item.quantity,
-                restaurantId: item.restaurantId, // Use item's restaurantId
+                restaurantId: item.restaurantId || item.menuItemId.restaurantId, // Use item's restaurantId with fallback
                 category: item.menuItemId.category
             };
         }).filter(item => item !== null);
@@ -42,12 +42,11 @@ exports.addToCart = async (req, res) => {
         }
 
         if (!cart) {
-            // Create new cart
             cart = new Cart({
                 userId: req.user.id,
                 items: [{
                     menuItemId,
-                    restaurantId, // Add restaurantId to item
+                    restaurantId,
                     quantity,
                     price: menuItem.price,
                     name: menuItem.name,
@@ -55,19 +54,14 @@ exports.addToCart = async (req, res) => {
                 }]
             });
         } else {
-            // Check if item exists
             const itemIndex = cart.items.findIndex(item => item.menuItemId.toString() === menuItemId);
 
             if (itemIndex > -1) {
-                // Update quantity
                 cart.items[itemIndex].quantity += quantity;
-                // Optional: Update price if changed? 
-                // cart.items[itemIndex].price = menuItem.price; 
             } else {
-                // Add new item (can be from any restaurant now)
                 cart.items.push({
                     menuItemId,
-                    restaurantId, // Add restaurantId to item
+                    restaurantId,
                     quantity,
                     price: menuItem.price,
                     name: menuItem.name,

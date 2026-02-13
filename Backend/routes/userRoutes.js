@@ -1,7 +1,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { registerUser, loginUser, getRestaurantStatus, updateRestaurantStatus, getRestaurantProfile, updateRestaurantProfile, deleteRestaurantAccount, changePassword, getAllRestaurants } = require('../controllers/userController');
+const { registerUser, loginUser, getRestaurantStatus, updateRestaurantStatus, getUserProfile, updateUserProfile, deleteUserAccount, changePassword, getAllRestaurants } = require('../controllers/userController');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 
 // Public Routes
@@ -30,9 +30,9 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
-router.get('/profile', protect, getRestaurantProfile);
-router.put('/profile/update', protect, upload.single('image'), updateRestaurantProfile);
+router.get('/profile', protect, getUserProfile);
+router.put('/profile/update', protect, upload.single('image'), updateUserProfile);
 router.put('/profile/password', protect, changePassword);
-router.delete('/profile/delete', protect, deleteRestaurantAccount);
+router.delete('/profile/delete', protect, deleteUserAccount);
 
 module.exports = router;

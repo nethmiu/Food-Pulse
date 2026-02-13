@@ -1,13 +1,19 @@
-import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, ShoppingBag, User, LogOut } from 'lucide-react';
+import React, { useState } from 'react';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { Home, ShoppingBag, User, LogOut, ChevronDown, ChevronRight, UserCog, Lock } from 'lucide-react';
 
 const CustomerSidebar = () => {
     const navigate = useNavigate();
+    const location = useLocation();
+    const [openSubMenus, setOpenSubMenus] = useState({ profile: false });
 
     const handleLogout = () => {
         localStorage.removeItem('userInfo');
         navigate('/login');
+    };
+
+    const toggleSubMenu = (key) => {
+        setOpenSubMenus(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
     const styles = {
@@ -62,6 +68,29 @@ const CustomerSidebar = () => {
             color: '#FFD700',
             fontWeight: '600'
         },
+        subMenu: {
+            paddingLeft: '20px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '5px',
+            marginTop: '5px'
+        },
+        subLink: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            padding: '10px 16px',
+            color: 'rgba(255, 255, 255, 0.5)',
+            textDecoration: 'none',
+            borderRadius: '10px',
+            fontSize: '0.85rem',
+            transition: 'all 0.3s ease',
+            fontFamily: "'Inter', sans-serif"
+        },
+        activeSubLink: {
+            color: '#FFD700',
+            background: 'rgba(255, 215, 0, 0.05)'
+        },
         logoutBtn: {
             display: 'flex',
             alignItems: 'center',
@@ -78,14 +107,26 @@ const CustomerSidebar = () => {
             transition: 'all 0.3s ease',
             width: '100%',
             fontFamily: "'Inter', sans-serif"
+        },
+        chevron: {
+            marginLeft: 'auto',
+            opacity: 0.5
         }
     };
 
     const navItems = [
-        { path: '/customer', icon: <Home size={20} />, label: 'Home' },
-        { path: '/customer/cart', icon: <ShoppingBag size={20} />, label: 'My Cart' },
-        // { path: '/customer/orders', icon: <ShoppingBag size={20} />, label: 'My Orders' }, // Future Scope
-        // { path: '/customer/profile', icon: <User size={20} />, label: 'Profile' } // Future Scope
+        { path: '/customer', label: 'Home', icon: <Home size={20} />, end: true },
+        { path: '/customer/cart', label: 'My Cart', icon: <ShoppingBag size={20} /> },
+        {
+            key: 'profile',
+            label: 'Profile',
+            icon: <User size={20} />,
+            subItems: [
+                { path: '/customer/profile/view', label: 'View Profile', icon: <User size={16} /> },
+                { path: '/customer/profile/manage', label: 'Manage Profile', icon: <UserCog size={16} /> },
+                { path: '/customer/profile/password', label: 'Change Password', icon: <Lock size={16} /> }
+            ]
+        }
     ];
 
     return (
@@ -96,17 +137,58 @@ const CustomerSidebar = () => {
 
             <nav style={styles.nav}>
                 {navItems.map((item) => (
-                    <NavLink
-                        key={item.path}
-                        to={item.path}
-                        style={({ isActive }) => ({
-                            ...styles.link,
-                            ...(isActive ? styles.activeLink : {})
-                        })}
-                    >
-                        {item.icon}
-                        {item.label}
-                    </NavLink>
+                    <div key={item.key || item.path}>
+                        {item.subItems ? (
+                            <>
+                                <div
+                                    style={{
+                                        ...styles.link,
+                                        ...(item.subItems.some(sub =>
+                                            location.pathname === sub.path ||
+                                            location.pathname.startsWith(`${sub.path}/`)
+                                        ) ? styles.activeLink : {})
+                                    }}
+                                    onClick={() => toggleSubMenu(item.key)}
+                                >
+                                    {item.icon}
+                                    {item.label}
+                                    {openSubMenus[item.key] ?
+                                        <ChevronDown size={16} style={styles.chevron} /> :
+                                        <ChevronRight size={16} style={styles.chevron} />
+                                    }
+                                </div>
+                                {openSubMenus[item.key] && (
+                                    <div style={styles.subMenu}>
+                                        {item.subItems.map(sub => (
+                                            <NavLink
+                                                key={sub.path}
+                                                to={sub.path}
+                                                style={({ isActive }) => ({
+                                                    ...styles.subLink,
+                                                    ...(isActive ? styles.activeSubLink : {})
+                                                })}
+                                            >
+                                                {sub.icon}
+                                                {sub.label}
+                                            </NavLink>
+                                        ))}
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <NavLink
+                                to={item.path}
+                                end={item.end}
+                                style={({ isActive }) => ({
+                                    ...styles.link,
+                                    ...(isActive ? styles.activeLink : {})
+                                })}
+                            >
+                                {item.icon}
+                                {item.label}
+                            </NavLink>
+                        )}
+                    </div>
                 ))}
             </nav>
 

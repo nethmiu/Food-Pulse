@@ -3,7 +3,7 @@ import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff, CheckCircle, AlertCircle, ShoppingBag, Store, Bike, MapPin, Locate, Phone } from 'lucide-react';
 import CustomModal from './CustomModal';
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
@@ -24,6 +24,16 @@ function LocationMarker({ location, setLocation }) {
     return location === null ? null : <Marker position={location}></Marker>;
 }
 
+const MapRecenter = ({ lat, lng }) => {
+    const map = useMap();
+    React.useEffect(() => {
+        if (lat && lng) {
+            map.flyTo([lat, lng], 13);
+        }
+    }, [lat, lng, map]);
+    return null;
+};
+
 const Register = () => {
     const [formData, setFormData] = useState({ name: '', username: '', email: '', phone: '', password: '', confirmPassword: '', role: 'customer', address: '' });
     const [location, setLocation] = useState({ lat: 6.9271, lng: 79.8612 }); // Default Colombo
@@ -37,6 +47,10 @@ const Register = () => {
     });
     const [passwordsMatch, setPasswordsMatch] = useState(true);
     const [loading, setLoading] = useState(false);
+
+    // Location Search State
+    const [locationSearchQuery, setLocationSearchQuery] = useState('');
+    const [searchResult, setSearchResult] = useState(null);
 
     // Modal State
     const [modalConfig, setModalConfig] = useState({
@@ -140,7 +154,7 @@ const Register = () => {
                 phone: formData.phone,
                 password: formData.password,
                 role: formData.role,
-                address: formData.role === 'restaurant' ? formData.address : undefined,
+                address: formData.address,
                 location: formData.role === 'restaurant' ? location : undefined
             });
             setModalConfig({
@@ -185,6 +199,25 @@ const Register = () => {
             );
         } else {
             alert("Geolocation is not supported by this browser.");
+        }
+    };
+
+    const handleLocationSearch = async () => {
+        if (!locationSearchQuery.trim()) return;
+        try {
+            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearchQuery)}`);
+            const data = await response.json();
+            if (data && data.length > 0) {
+                const { lat, lon } = data[0];
+                const newLoc = { lat: parseFloat(lat), lng: parseFloat(lon) };
+                setLocation(newLoc);
+                setSearchResult(newLoc); // Triggers MapRecenter
+            } else {
+                alert('Location not found');
+            }
+        } catch (error) {
+            console.error("Geocoding error:", error);
+            alert('Error searching for location');
         }
     };
 
@@ -607,6 +640,33 @@ const Register = () => {
                             </div>
                         </div>
 
+                        {/* Address (For Customers) */}
+                        {formData.role === 'customer' && (
+                            <div style={styles.formGroup}>
+                                <label style={styles.label}>Address</label>
+                                <div style={styles.inputIcon}>
+                                    <input
+                                        name="address"
+                                        type="text"
+                                        placeholder="Enter your address"
+                                        value={formData.address}
+                                        onChange={handleChange}
+                                        required
+                                        style={styles.inputField}
+                                        onFocus={(e) => Object.assign(e.target.style, styles.inputFieldFocus)}
+                                        onBlur={(e) => {
+                                            e.target.style.borderColor = 'rgba(255, 215, 0, 0.2)';
+                                            e.target.style.boxShadow = 'none';
+                                            e.target.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
+                                        }}
+                                    />
+                                    <div style={styles.iconWrapper}>
+                                        <MapPin size={18} style={{ color: '#666' }} />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Password */}
                         <div style={styles.formGroup}>
                             <label style={styles.label}>Create Password</label>
@@ -726,7 +786,30 @@ const Register = () => {
                                 {/* Map */}
                                 <div style={{ marginTop: '15px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                        <label style={{ ...styles.label, marginBottom: '0' }}>Pin Location on Map</label>
+                                        <div style={{ display: 'flex', gap: '10px', flex: 1, marginRight: '10px' }}>
+                                            <input
+                                                type="text"
+                                                placeholder="Search city..."
+                                                value={locationSearchQuery}
+                                                onChange={(e) => setLocationSearchQuery(e.target.value)}
+                                                style={{
+                                                    padding: '8px', borderRadius: '8px', border: '1px solid #444',
+                                                    background: 'rgba(0, 0, 0, 0.6)', color: '#fff', width: '100%'
+                                                }}
+                                                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleLocationSearch())}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleLocationSearch}
+                                                style={{
+                                                    background: '#FFD700', color: '#000', height: '50px', border: 'none', borderRadius: '8px',
+                                                    padding: '5px 15px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px'
+                                                }}
+                                            >
+                                                Search
+                                            </button>
+                                        </div>
+                                        <label style={{ ...styles.label, marginBottom: '0', display: 'none' }}>Pin Location on Map</label>
                                         <button
                                             type="button"
                                             onClick={handleFindMe}
@@ -770,6 +853,7 @@ const Register = () => {
                                                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                                             />
                                             <LocationMarker location={location} setLocation={setLocation} />
+                                            {searchResult && <MapRecenter lat={searchResult.lat} lng={searchResult.lng} />}
                                         </MapContainer>
                                     </div>
                                     <p style={{ color: '#aaa', fontSize: '0.8rem', marginTop: '8px', textAlign: 'center' }}>

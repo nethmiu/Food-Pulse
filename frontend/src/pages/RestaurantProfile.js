@@ -103,6 +103,27 @@ export default function RestaurantProfile() {
         };
     }, [token]);
 
+    const [locationSearchQuery, setLocationSearchQuery] = useState('');
+
+    const handleLocationSearch = async () => {
+        if (!locationSearchQuery.trim()) return;
+        try {
+            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearchQuery)}`);
+            const data = await response.json();
+            if (data && data.length > 0) {
+                const { lat, lon } = data[0];
+                const newLoc = { lat: parseFloat(lat), lng: parseFloat(lon) };
+                setLocation(newLoc);
+                // ChangeView will automatically handle the map movement because it depends on 'location'
+            } else {
+                alert('Location not found');
+            }
+        } catch (error) {
+            console.error("Geocoding error:", error);
+            alert('Error searching for location');
+        }
+    };
+
     const handleFindMe = () => {
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
@@ -157,6 +178,7 @@ export default function RestaurantProfile() {
             // Update local storage if needed, but safer to just update state
             const updatedUser = { ...userInfo, ...res.data };
             localStorage.setItem('userInfo', JSON.stringify(updatedUser)); // Be careful updating token/role if not intended
+            window.dispatchEvent(new Event('userInfoUpdated'));
 
             setModal({
                 isOpen: true,
@@ -452,8 +474,39 @@ export default function RestaurantProfile() {
 
                     <div style={styles.inputGroup}>
                         <label style={styles.label}>Location (Click on map to update)</label>
-                        <div style={{ marginBottom: '10px', display: 'flex', gap: '10px' }}>
-                            <button type="button" onClick={handleFindMe} style={styles.uploadBtn}>
+                        <div style={{ marginBottom: '10px', display: 'flex', gap: '10px', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', gap: '10px', flex: 1, alignItems: 'center' }}>
+                                <input
+                                    type="text"
+                                    placeholder="Search city..."
+                                    value={locationSearchQuery}
+                                    onChange={(e) => setLocationSearchQuery(e.target.value)}
+                                    style={{
+                                        ...styles.input,
+                                        width: '100%'
+                                    }}
+                                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleLocationSearch())}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleLocationSearch}
+                                    style={{
+                                        background: '#FFD700',
+                                        color: '#000',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        padding: '10px 30px',
+                                        cursor: 'pointer',
+                                        fontWeight: 'bold',
+                                        fontSize: '13px',
+                                        whiteSpace: 'nowrap',
+                                        height: '45px'
+                                    }}
+                                >
+                                    Search
+                                </button>
+                            </div>
+                            <button type="button" onClick={handleFindMe} style={{ ...styles.uploadBtn, marginLeft: '10px' }}>
                                 <Locate size={18} />
                                 Find Me
                             </button>

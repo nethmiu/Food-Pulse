@@ -17,6 +17,8 @@ import MenuList from './pages/MenuList';
 import RestaurantOrders from './pages/RestaurantOrders';
 import RestaurantProfile from './pages/RestaurantProfile';
 import ViewProfile from './pages/ViewProfile';
+import CustomerViewProfile from './pages/CustomerViewProfile';
+import CustomerProfileManage from './pages/CustomerProfileManage';
 import ChangePassword from './pages/ChangePassword';
 import { Navigate } from 'react-router-dom';
 
@@ -51,10 +53,42 @@ function App() {
 
         {/* Customer Route (allowedRole="customer" ලෙස දෙන්න) */}
         <Route
-          path="/customer/*"
+          path="/customer"
           element={
             <ProtectedRoute allowedRole="customer">
               <CustomerHome />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/customer/cart"
+          element={
+            <ProtectedRoute allowedRole="customer">
+              <CustomerHome />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/customer/profile/view"
+          element={
+            <ProtectedRoute allowedRole="customer">
+              <CustomerViewProfile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/customer/profile/manage"
+          element={
+            <ProtectedRoute allowedRole="customer">
+              <CustomerProfileManage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/customer/profile/password"
+          element={
+            <ProtectedRoute allowedRole="customer">
+              <ChangePassword />
             </ProtectedRoute>
           }
         />
